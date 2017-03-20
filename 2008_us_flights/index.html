@@ -1,0 +1,150 @@
+<!-- TODO: 
+	* Labels and title
+	* Buttons that toggle the month displayed
+	* Maybe include a button that changes whether delays or
+	  negative delay is displayed?
+ -->
+
+
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset='utf-8'>
+	<script src='https://d3js.org/d3.v4.js'></script>
+	<style type="text/css">
+		path {
+			fill: white;
+			stroke: black;
+			stroke-width: 0.2;
+		}
+	</style>
+	<script type='text/javascript'>
+		function plot(raw_data, airport_coords_map) {
+			/** Make data
+
+				This portion retrieves each airport's geographical coordinates 
+				from airport_coords.json. Then, using 'proj', it maps the 
+				coordinates to the proper place on the webpage.
+			**/
+			var data = raw_data;
+			for (var i = 0; i < raw_data.length; i++) {
+				for (var key in airport_coords_map) {
+					if (raw_data[i]['Origin'] === key) {
+						data[i]['coord'] = proj([
+							airport_coords_map[key][1],
+							airport_coords_map[key][0]
+						]);
+					}
+				}
+			}
+
+
+			/** Plot **/
+			var max_median = d3.max(data, function(d) { 
+				return d['median'];
+			});
+
+			var radius = d3.scaleSqrt()
+				.domain([0, max_median])
+				.range([0, 10]);
+
+			var nested_data = d3.nest()
+				.key(function(d) { return d['Month']; })
+				.entries(data);
+
+			function get_key(d) {
+				return d.key;
+			};
+
+			function get_x_coord(d) {
+				return d['coord'] ? d['coord'][0] : 0;
+			};
+
+			function get_y_coord(d) {
+				return d['coord'] ? d['coord'][1] : 0;
+			};
+
+			function update(month) {
+				var filtered_data = data.filter(function(d) {
+					return d['Month'] == month;
+				});
+
+				var circles = svg.selectAll('circle')
+					.data(filtered_data, get_key);
+
+				circles.exit().remove();
+
+				circles.enter()
+					.append('circle')
+						.attr('cx', get_x_coord)
+						.attr('cy', get_y_coord)
+						.attr('r', function(d) { 
+							if (d['coord'] && d['median'] > 0) {
+								return radius(d['median']);
+							} else {
+								return 0;
+							}
+						});
+			};
+
+
+			// Initialize airport positions on map (nothing displayed)
+			svg.append('g')
+				.attr('class', 'bubble')
+				.selectAll('circle')
+				.data(data)
+				.enter()
+				.append('circle')
+					.attr('cx', get_x_coord)
+					.attr('cy', get_y_coord)
+
+			// Animate: one second for each month
+			var month_index = 1;
+			var month_interval = setInterval(function() {
+				update(month_index);
+				month_index++;
+
+				if (month_index > 12) {
+					clearInterval(year_interval);
+				}
+			}, 1000);
+		};
+	</script>
+</head>
+<body>
+	<script type="text/javascript">
+		var WIDTH = 1000;
+		var HEIGHT = 500;
+
+		var proj = d3.geoAlbersUsa()
+				.translate([WIDTH/2, HEIGHT/2])
+				.scale([950]);
+
+		var svg = d3.select('body')
+			.append('svg')
+			.attr('width', WIDTH)
+			.attr('height', HEIGHT)
+			.append('g')
+			.attr('class', 'map');
+
+		/** Draw map **/
+		d3.json('data/us-states.json', function (geo_json) {
+			var path = d3.geoPath().projection(proj);
+
+			svg.selectAll('path')
+				.data(geo_json.features)
+				.enter()
+				.append('path')
+				.attr('d', path);
+			}
+		);
+
+		/** Plot **/
+		d3.json('data/medians_grouped_by_month_and_origin.json', function(raw_data) {
+			d3.json('data/airport_coords.json', function(airport_coords_map) {
+				plot(raw_data, airport_coords_map);
+			});
+		});
+	</script>
+</body>
+</html>
